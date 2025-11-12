@@ -37,11 +37,35 @@ def write_csv(path, row, fieldnames):
             writer.writeheader()
         writer.writerow(row)
 
+def choose_device_interactive(devices):
+    while True:
+        print("Select device:")
+        for i, d in enumerate(devices, 1):
+            print(f"{i}. {d}")
+        sel = input("Enter number or name (leave empty for UNKNOWN): ").strip()
+        if not sel:
+            return "UNKNOWN"
+        if sel.isdigit():
+            idx = int(sel)
+            if 1 <= idx <= len(devices):
+                return devices[idx - 1]
+        elif sel in devices:
+            return sel
+        print("Invalid selection, try again.")
+
 def main():
     default_output = r"C:\logs\speedtest\speedtest_results.csv"
+    devices = ["TUCMOTO5", "TUCMOTO2", "ZyXEL20522"]
+
     parser = argparse.ArgumentParser(description="Run speedtest and append results to CSV.")
     parser.add_argument("--output", "-o", default=default_output, help=f"CSV output path (default: {default_output})")
+    parser.add_argument("--device", "-d", choices=devices, help="Device name to record (if omitted you'll be prompted)")
     args = parser.parse_args()
+
+    if args.device:
+        device = args.device
+    else:
+        device = choose_device_interactive(devices)
 
     try:
         row = run_speedtest()
@@ -49,13 +73,16 @@ def main():
         print(f"Speedtest failed: {e}")
         return
 
+    # add device as the first column
+    row = {"device": device, **row}
+
     fieldnames = [
-        "timestamp", "server_id", "server_name", "sponsor", "country", "host", "lat", "lon",
+        "device", "timestamp", "server_id", "server_name", "sponsor", "country", "host", "lat", "lon",
         "ping_ms", "download_mbps", "upload_mbps", "client_ip", "client_isp"
     ]
     write_csv(args.output, row, fieldnames)
     print(f"Saved results to {os.path.abspath(args.output)}")
-    print(f"Download: {row['download_mbps']} Mbps, Upload: {row['upload_mbps']} Mbps, Ping: {row['ping_ms']} ms")
+    print(f"Device: {device} — Download: {row['download_mbps']} Mbps, Upload: {row['upload_mbps']} Mbps, Ping: {row['ping_ms']} ms")
 
 if __name__ == "__main__":
     main()
