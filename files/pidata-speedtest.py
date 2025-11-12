@@ -27,10 +27,46 @@ def run_speedtest():
         "client_isp": results.get("client", {}).get("isp"),
     }
 
+def _ensure_csv_has_header(path, fieldnames, device_default=""):
+    """
+    If CSV exists but is missing required columns (like 'device'),
+    rewrite the file adding the missing columns (existing rows get empty/default values).
+    """
+    if not os.path.exists(path):
+        return  # will be created by write_csv and header written there
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        existing_fields = reader.fieldnames or []
+        # if all required fields already present, nothing to do
+        if all(fn in existing_fields for fn in fieldnames):
+            return
+        rows = list(reader)
+
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            # populate new row: use existing values where present, default otherwise
+            new_row = {}
+            for fn in fieldnames:
+                if fn in r:
+                    new_row[fn] = r.get(fn, "")
+                else:
+                    # set device default (usually empty) for old rows
+                    new_row[fn] = device_default if fn == "device" else r.get(fn, "")
+            writer.writerow(new_row)
+    os.replace(tmp_path, path)
+
 def write_csv(path, row, fieldnames):
     folder = os.path.dirname(path)
     if folder and not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
+
+    # If file exists but header is missing 'device', fix it first
+    _ensure_csv_has_header(path, fieldnames, device_default="")
+
     file_exists = os.path.isfile(path)
     with open(path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -59,12 +95,29 @@ def main():
     devices = ["TUCMOTO5", "TUCMOTO2", "ZyXEL20522"]
 
     parser = argparse.ArgumentParser(description="Run speedtest and append results to CSV.")
+    parser.add_argument("device_arg", nargs="?", help="Device number (1..N) or name (optional). Example: pidata-speedtest.py 1")
     parser.add_argument("--output", "-o", default=default_output, help=f"CSV output path (default: {default_output})")
-    parser.add_argument("--device", "-d", choices=devices, help="Device name to record (if omitted you'll be prompted)")
+    parser.add_argument("--device", "-d", choices=devices, help="Device name to record (if provided it takes precedence over positional arg)")
     args = parser.parse_args()
 
+    # Determine device: --device flag > positional arg > interactive prompt
+    device = None
     if args.device:
         device = args.device
+    elif args.device_arg:
+        sel = args.device_arg.strip()
+        if sel.isdigit():
+            idx = int(sel)
+            if 1 <= idx <= len(devices):
+                device = devices[idx - 1]
+            else:
+                print(f"Invalid device number: {sel}. Must be between 1 and {len(devices)}.")
+                return
+        elif sel in devices:
+            device = sel
+        else:
+            print(f"Invalid device name: {sel}. Valid names: {', '.join(devices)}")
+            return
     else:
         device = choose_device_interactive(devices)
 
