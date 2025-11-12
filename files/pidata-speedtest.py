@@ -1,7 +1,7 @@
 import argparse
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import speedtest
 
 def run_speedtest():
@@ -11,7 +11,8 @@ def run_speedtest():
     upload_bps = s.upload(pre_allocate=False)
     results = s.results.dict()
     return {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        # use timezone-aware UTC to avoid DeprecationWarning
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "server_id": results.get("server", {}).get("id"),
         "server_name": results.get("server", {}).get("name"),
         "sponsor": results.get("server", {}).get("sponsor"),
